@@ -9,14 +9,32 @@ function App() {
   useEffect(() => {
     let consecutiveErrors = 0;
     const maxErrors = 5;
+    let lastImageHash = null;
 
-    const fetchImage = () => {
-      fetch("http://localhost:5075/latest?" + new Date().getTime())
-        .then((res) => {
-          if (!res.ok) throw new Error("No image yet");
-          return res.blob();
-        })
-        .then((blob) => {
+    const fetchImage = async () => {
+      try {
+        // Add timestamp to prevent caching
+        const timestamp = new Date().getTime();
+        const response = await fetch(`http://localhost:5075/latest?t=${timestamp}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
+        
+        if (!response.ok) throw new Error("No image yet");
+        
+        const blob = await response.blob();
+        
+        // Create a hash to detect if image actually changed
+        const arrayBuffer = await blob.arrayBuffer();
+        const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const currentHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        
+        // Only update if the image actually changed
+        if (currentHash !== lastImageHash) {
           // Revoke old object URL to prevent memory leaks
           if (img) {
             URL.revokeObjectURL(img);
@@ -26,16 +44,19 @@ function App() {
           setImg(newImgUrl);
           setLastUpdate(new Date());
           setStatus("Live");
-          consecutiveErrors = 0;
-        })
-        .catch((err) => {
-          consecutiveErrors++;
-          if (consecutiveErrors >= maxErrors) {
-            setStatus("Disconnected");
-          } else {
-            setStatus("Waiting for frames...");
-          }
-        });
+          lastImageHash = currentHash;
+          console.log("📸 New image received");
+        }
+        
+        consecutiveErrors = 0;
+      } catch (err) {
+        consecutiveErrors++;
+        if (consecutiveErrors >= maxErrors) {
+          setStatus("Disconnected");
+        } else {
+          setStatus("Waiting for frames...");
+        }
+      }
     };
 
     // Initial fetch
@@ -92,7 +113,7 @@ function App() {
             color: "#333",
             fontSize: "2rem"
           }}>
-            📊 Real-time Chart Stream
+            🌐 Real-time Webpage Stream
           </h1>
           <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
             <div style={{
@@ -155,7 +176,7 @@ function App() {
               }}>📡</div>
               <p style={{ fontSize: "1.2rem" }}>Waiting for frames...</p>
               <p style={{ fontSize: "0.9rem" }}>
-                Make sure the Chrome extension is active on TradingView
+                Make sure the Chrome extension is active on any webpage
               </p>
             </div>
           )}
@@ -169,7 +190,7 @@ function App() {
           borderLeft: "4px solid #2196F3"
         }}>
           <p style={{ margin: 0, color: "#555", fontSize: "0.9rem" }}>
-            <strong>📌 How it works:</strong> The Chrome extension captures screenshots from TradingView every 3 seconds → 
+            <strong>🔌 How it works:</strong> The Chrome extension captures screenshots from any webpage every 3 seconds → 
             Streams through Kafka → Displays here in real-time
           </p>
         </div>

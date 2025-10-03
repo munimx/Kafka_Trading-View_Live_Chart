@@ -24,7 +24,7 @@ app.post("/publish", async (req, res) => {
     if (!frame) return res.status(400).send({ error: "Missing frame data" });
 
     await producer.send({
-      topic: "chart_frames",
+      topic: "webpage_frames",
       messages: [{ value: frame }],
     });
 

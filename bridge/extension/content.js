@@ -1,49 +1,84 @@
-let isCapturing = false;
 let captureInterval = null;
+let isCapturing = false;
 
-function captureFullScreenshot() {
-  if (isCapturing) return;
+function startAutoCapture() {
+  if (captureInterval) {
+    console.log("⚠️ Auto-capture already running");
+    return;
+  }
+
+  console.log("🚀 Starting auto-capture (every 3 seconds)");
   
-  if (!chrome.runtime?.id) {
-    console.log("⚠️ Extension context invalidated, stopping captures");
-    if (captureInterval) {
-      clearInterval(captureInterval);
-      captureInterval = null;
-    }
+  captureScreenshot();
+  
+  captureInterval = setInterval(() => {
+    captureScreenshot();
+  }, 3000);
+}
+
+function stopAutoCapture() {
+  if (captureInterval) {
+    clearInterval(captureInterval);
+    captureInterval = null;
+    console.log("🛑 Auto-capture stopped");
+  }
+}
+
+function captureScreenshot() {
+  if (isCapturing) {
+    console.log("⏭️ Skipping capture (previous capture still in progress)");
     return;
   }
 
   isCapturing = true;
+  const timestamp = new Date().toLocaleTimeString();
+  console.log(`📸 Auto-capture triggered at ${timestamp}`);
 
-  try {
-    chrome.runtime.sendMessage({ type: "CAPTURE_SCREENSHOT" }, (response) => {
+  chrome.runtime.sendMessage(
+    { type: "CAPTURE_SCREENSHOT" },
+    (response) => {
+      isCapturing = false;
+      
       if (chrome.runtime.lastError) {
-        console.log("⚠️ Extension context lost:", chrome.runtime.lastError.message);
-        if (captureInterval) {
-          clearInterval(captureInterval);
-          captureInterval = null;
+        console.error("❌ Runtime error:", chrome.runtime.lastError.message);
+        
+        if (chrome.runtime.lastError.message.includes("Extension context invalidated")) {
+          stopAutoCapture();
+          console.log("⚠️ Extension reloaded - please refresh this page");
         }
-        isCapturing = false;
         return;
       }
 
       if (response && response.success) {
-        console.log("📤 Full page screenshot captured and sent");
+        console.log(`✅ Auto-capture successful at ${timestamp}`);
       } else {
-        console.error("❌ Failed to capture screenshot:", response?.error);
+        console.error(`❌ Auto-capture failed at ${timestamp}:`, response?.error || "Unknown error");
       }
-      isCapturing = false;
-    });
-  } catch (error) {
-    console.log("⚠️ Caught error:", error.message);
-    if (captureInterval) {
-      clearInterval(captureInterval);
-      captureInterval = null;
     }
-    isCapturing = false;
-  }
+  );
 }
 
-captureInterval = setInterval(captureFullScreenshot, 3000);
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => {
+    console.log("📄 Page loaded, starting auto-capture");
+    startAutoCapture();
+  });
+} else {
+  console.log("📄 Page already loaded, starting auto-capture");
+  startAutoCapture();
+}
 
-console.log("🎬 TradingView Kafka Bridge - Full page auto-capture started (every 3s)");
+window.addEventListener("beforeunload", () => {
+  console.log("👋 Page unloading, stopping auto-capture");
+  stopAutoCapture();
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    console.log("⏸️ Tab hidden - pausing auto-capture");
+    stopAutoCapture();
+  } else {
+    console.log("▶️ Tab visible - resuming auto-capture");
+    startAutoCapture();
+  }
+});
